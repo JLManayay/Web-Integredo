@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet"><link rel="stylesheet" href="css/app.css"><title>Entrenamiento · FitSync</title></head>
+<body>
+<main class="wrap">
+  <div class="page-head">
+    <div><h1>Entrenamiento</h1><p>Arma tu programa por días y ejercicios. El sistema valida las reglas de negocio antes de guardar.</p></div>
+  </div>
+  <div class="split">
+    <aside>
+      <div class="list" id="programs"></div>
+      <form class="panel" id="formProgram">
+        <h2>Nuevo programa</h2>
+        <div class="field"><label for="pname">Nombre</label><input id="pname" required maxlength="120" placeholder="Rutina PPL 6 días"></div>
+        <div class="field"><label for="psplit">División</label>
+          <select id="psplit"><option value="PUSH_PULL_LEGS">Push / Pull / Legs</option><option value="UPPER_LOWER">Torso / Pierna</option><option value="FULL_BODY">Cuerpo completo</option><option value="BRO_SPLIT">Un músculo por día</option></select></div>
+        <button class="btn btn-coral" type="submit">Crear programa</button>
+      </form>
+    </aside>
+    <section id="detail"></section>
+  </div>
+</main>
+<script src="js/app.js"></script>
+<script>
+shell('entreno');
+let programs = [], selected = null;
+const MUSCLES = ['Pecho','Espalda','Piernas','Hombros','Bíceps','Tríceps','Core'];
+
+async function load(selectId) {
+  programs = await listPrograms();
+  if (selectId) selected = selectId;
+  if (!programs.find(p => p.id === selected)) selected = programs.length ? programs[0].id : null;
+  renderList(); renderDetail();
+}
+
+function renderList() {
+  $('#programs').innerHTML = programs.length ? programs.map(p =>
+    '<button class="item' + (p.id === selected ? ' sel' : '') + '" data-id="' + p.id + '"><b>' + esc(p.name) + '</b><small>' +
+    SPLIT_ES[p.splitType] + ' · ' + p.days.length + ' días</small></button>').join('')
+    : '<p class="empty">Aún no tienes programas. Crea el primero abajo.</p>';
+  document.querySelectorAll('#programs .item').forEach(b => b.onclick = () => { selected = b.dataset.id; renderList(); renderDetail(); });
+}
+
+function renderDetail() {
+  const p = programs.find(x => x.id === selected);
+  if (!p) { $('#detail').innerHTML = '<div class="panel"><p class="empty">Selecciona o crea un programa para ver su detalle.</p></div>'; return; }
+  const days = [...p.days].sort((a, b) => DAYS.indexOf(a.dayOfWeek) - DAYS.indexOf(b.dayOfWeek));
+  const daysHtml = days.length ? days.map(d =>
+    '<div class="daycard"><h3>' + DAY_ES[d.dayOfWeek] + '</h3>' + (d.exercises.length
+      ? d.exercises.map(e => '<div class="ex"><b>' + esc(e.name) + '</b><span>' + esc(e.muscleGroup) + '</span><span>' + e.reps + '</span><span>descanso ' + e.rest + '</span></div>').join('')
+      : '<p class="empty">Día sin ejercicios todavía.</p>') + '</div>').join('')
+    : '<p class="empty">Este programa no tiene días. Agrega el primero con el formulario de abajo.</p>';
+
+  $('#detail').innerHTML =
+    '<div class="stack"><div class="panel"><div class="detail-head"><div><h2>' + esc(p.name) + '</h2>' +
+    '<span class="chip">' + SPLIT_ES[p.splitType] + '</span> <span class="chip ' + (p.published ? 'ok' : 'draft') + '">' + (p.published ? 'Publicado' : 'Borrador') + '</span></div>' +
+    (p.published ? '' : '<button class="btn btn-teal" id="btnPublish">Publicar programa</button>') + '</div>' +
+    '<div class="rule" id="rulePub"></div>' + daysHtml + '</div>' +
+
+    '<div class="row c2" style="align-items:start">' +
+    '<form class="panel" id="formDay"><h2>Agregar día</h2><div class="rule" id="ruleDay"></div>' +
+    '<div class="field"><label for="dsel">Día de la semana</label><select id="dsel">' + DAYS.map(d => '<option value="' + d + '">' + DAY_ES[d] + '</option>').join('') + '</select></div>' +
+    '<button class="btn btn-coral" type="submit">Agregar día</button></form>' +
+
+    '<form class="panel" id="formEx"><h2>Agregar ejercicio</h2><div class="rule" id="ruleEx"></div>' +
+    '<div class="field"><label for="esel">Día</label><select id="esel">' + (days.length ? days.map(d => '<option value="' + d.dayOfWeek + '">' + DAY_ES[d.dayOfWeek] + '</option>').join('') : '<option value="">Agrega un día primero</option>') + '</select></div>' +
+    '<div class="field"><label for="ename">Ejercicio</label><input id="ename" required maxlength="120" placeholder="Press banca"></div>' +
+    '<div class="field"><label for="emus">Grupo muscular</label><select id="emus">' + MUSCLES.map(m => '<option>' + m + '</option>').join('') + '</select></div>' +
+    '<div class="row c3"><div class="field"><label for="esets">Series</label><input id="esets" type="number" min="1" max="10" value="4" required></div>' +
+    '<div class="field"><label for="ereps">Reps</label><input id="ereps" type="number" min="1" max="100" value="8" required></div>' +
+    '<div class="field"><label for="erest">Descanso (s)</label><input id="erest" type="number" min="0" max="600" value="90" required></div></div>' +
+    '<button class="btn btn-coral" type="submit"' + (days.length ? '' : ' disabled') + '>Agregar ejercicio</button></form></div></div>';
+
+  const run = async (box, fn, ok) => {
+    clearRule(box);
+    try { await fn(); await load(p.id); toast(ok); } catch (e) { showRule(box, e.message); }
+  };
+  $('#formDay').onsubmit = ev => { ev.preventDefault(); run($('#ruleDay'), () => api('/workout-programs/' + p.id + '/days', 'POST', {dayOfWeek: $('#dsel').value}), 'Día agregado'); };
+  $('#formEx').onsubmit = ev => { ev.preventDefault(); run($('#ruleEx'), () => api('/workout-programs/' + p.id + '/exercises', 'POST', {
+    dayOfWeek: $('#esel').value, exerciseName: $('#ename').value, muscleGroup: $('#emus').value,
+    sets: +$('#esets').value, repsPerSet: +$('#ereps').value, restSeconds: +$('#erest').value}), 'Ejercicio agregado'); };
+  const bp = $('#btnPublish');
+  if (bp) bp.onclick = () => run($('#rulePub'), () => api('/workout-programs/' + p.id + '/publish', 'POST'), 'Programa publicado');
+}
+
+$('#formProgram').onsubmit = async ev => {
+  ev.preventDefault();
+  try {
+    const p = await api('/workout-programs', 'POST', {userId: USER_ID, name: $('#pname').value, splitType: $('#psplit').value});
+    $('#pname').value = ''; await load(p.id); toast('Programa creado');
+  } catch (e) { toast(e.message); }
+};
+load().catch(e => toast(e.message));
+</script>
+</body></html>

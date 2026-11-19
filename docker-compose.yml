@@ -1,0 +1,16 @@
+# Levanta solo PostgreSQL, con las mismas credenciales de application.yml.
+# Uso:  docker compose up -d
+services:
+  db:
+    image: postgres:16
+    container_name: fitsync-db
+    environment:
+      POSTGRES_DB: fitsync
+      POSTGRES_USER: fitsync
+      POSTGRES_PASSWORD: fitsync
+    ports:
+      - "5432:5432"
+    volumes:
+      - fitsync-data:/var/lib/postgresql/data
+volumes:
+  fitsync-data:

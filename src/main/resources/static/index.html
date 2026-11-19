@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet"><link rel="stylesheet" href="css/app.css"><title>Semana · FitSync</title></head>
+<body>
+<main class="wrap">
+  <div class="page-head">
+    <div><h1>Tu semana</h1><p>Entrenamiento y suplementación en un solo tablero. Las dosis post-entreno aparecen solo los días que entrenas.</p></div>
+    <button class="btn btn-ghost" id="btnSeed">Cargar datos de ejemplo</button>
+  </div>
+  <div id="content"></div>
+</main>
+<script src="js/app.js"></script>
+<script>
+shell('semana');
+let programs = [], plans = [], progId = null, planId = null;
+
+async function load() {
+  [programs, plans] = await Promise.all([listPrograms(), listPlans()]);
+  if (!programs.find(p => p.id === progId)) progId = programs.length ? programs[0].id : null;
+  if (!plans.find(p => p.id === planId)) pickPlanFor(progId);
+  render();
+}
+function pickPlanFor(pid) {
+  const linked = plans.find(p => p.linkedProgramId === pid);
+  planId = linked ? linked.id : (plans.length ? plans[0].id : null);
+}
+
+function render() {
+  const box = $('#content');
+  if (!programs.length) {
+    box.innerHTML = '<div class="panel"><h2>Todavía no hay nada que mostrar</h2><p class="empty">Crea un programa en <a href="entrenamiento.html">Entrenamiento</a> y un plan en <a href="suplementos.html">Suplementación</a>, o carga datos de ejemplo para ver el tablero completo.</p></div>';
+    return;
+  }
+  const prog = programs.find(p => p.id === progId);
+  const plan = plans.find(p => p.id === planId);
+  const doses = plan ? [...plan.doses].sort((a, b) => a.timeOfDay.localeCompare(b.timeOfDay)) : [];
+  const byDay = {}; prog.days.forEach(d => byDay[d.dayOfWeek] = d);
+  const trainDays = prog.days.filter(d => d.exercises.length).length;
+  const totalEx = prog.days.reduce((n, d) => n + d.exercises.length, 0);
+
+  const cols = DAYS.map(day => {
+    const d = byDay[day];
+    const training = !!d;
+    const fixed = doses.filter(x => !x.relativeToWorkout);
+    const post = training ? doses.filter(x => x.relativeToWorkout) : [];
+    const ex = training ? (d.exercises.length ? d.exercises.map(e =>
+      '<div class="blk">' + esc(e.name) + '<small>' + e.reps + ' · ' + esc(e.muscleGroup) + '</small></div>').join('') : '<p class="empty">Sin ejercicios</p>') : '<p class="empty">Descanso</p>';
+    const dz = fixed.concat(post).sort((a, b) => a.timeOfDay.localeCompare(b.timeOfDay)).map(x =>
+      '<div class="blk dose">' + esc(x.supplementName) + '<small>' + x.grams + ' g · ' + x.timeOfDay + (x.relativeToWorkout ? ' · post-entreno' : '') + '</small></div>').join('');
+    return '<div class="col ' + (training ? 'train' : 'rest') + '"><h3>' + DAY_ES[day] + '<span class="tag">' + (training ? 'Entrenas' : 'Descanso') + '</span></h3>' +
+      ex + (dz ? '<div class="sep">Suplementos</div>' + dz : '') + '</div>';
+  }).join('');
+
+  box.innerHTML =
+    '<div class="picks"><div><label for="selProg">Programa de entrenamiento</label><select id="selProg">' +
+    programs.map(p => '<option value="' + p.id + '"' + (p.id === progId ? ' selected' : '') + '>' + esc(p.name) + '</option>').join('') + '</select></div>' +
+    '<div><label for="selPlan">Plan de suplementación</label><select id="selPlan"><option value="">Ninguno</option>' +
+    plans.map(p => '<option value="' + p.id + '"' + (p.id === planId ? ' selected' : '') + '>' + esc(planLabel(p, programs)) + '</option>').join('') + '</select></div></div>' +
+    '<div class="stats"><span><b>' + trainDays + '</b>días de entrenamiento</span><span><b>' + totalEx + '</b>ejercicios</span><span><b>' + doses.length + '</b>dosis en el plan</span><span><b>' + (7 - prog.days.length) + '</b>días de descanso</span></div>' +
+    '<div class="legend"><span><i style="background:var(--coral)"></i>Entrenamiento</span><span><i style="background:var(--teal)"></i>Suplementación</span></div>' +
+    '<div class="board">' + cols + '</div>';
+
+  $('#selProg').onchange = e => { progId = e.target.value; pickPlanFor(progId); render(); };
+  $('#selPlan').onchange = e => { planId = e.target.value || null; render(); };
+}
+
+/** Crea un programa PPL de 6 días con un plan de suplementos vinculado. */
+async function seed() {
+  const btn = $('#btnSeed'); btn.disabled = true; btn.textContent = 'Cargando…';
+  try {
+    const plan = [
+      ['MONDAY', [['Press banca','Pecho',4,8],['Press militar','Hombros',3,10],['Fondos en paralelas','Tríceps',3,12]]],
+      ['TUESDAY', [['Dominadas','Espalda',4,8],['Remo con barra','Espalda',4,10],['Curl con barra','Bíceps',3,12]]],
+      ['WEDNESDAY', [['Sentadilla','Piernas',4,6],['Peso muerto rumano','Piernas',3,10],['Elevación de talones','Piernas',4,15]]],
+      ['THURSDAY', [['Press inclinado con mancuernas','Pecho',4,10],['Elevaciones laterales','Hombros',4,15]]],
+      ['FRIDAY', [['Jalón al pecho','Espalda',4,10],['Remo con mancuerna','Espalda',3,12]]],
+      ['SATURDAY', [['Prensa de piernas','Piernas',4,12],['Curl femoral','Piernas',3,12]]]
+    ];
+    const p = await api('/workout-programs', 'POST', {userId: USER_ID, name: 'Rutina PPL 6 días', splitType: 'PUSH_PULL_LEGS'});
+    for (const [day, exs] of plan) {
+      await api('/workout-programs/' + p.id + '/days', 'POST', {dayOfWeek: day});
+      for (const [n, m, s, r] of exs)
+        await api('/workout-programs/' + p.id + '/exercises', 'POST', {dayOfWeek: day, exerciseName: n, muscleGroup: m, sets: s, repsPerSet: r, restSeconds: 90});
+    }
+    await api('/workout-programs/' + p.id + '/publish', 'POST');
+    const sp = await api('/supplement-plans', 'POST', {userId: USER_ID, linkedProgramId: p.id});
+    await api('/supplement-plans/' + sp.id + '/doses', 'POST', {supplementName: 'Creatina monohidrato', grams: 5, timeOfDay: '08:00', relativeToWorkout: false});
+    await api('/supplement-plans/' + sp.id + '/doses', 'POST', {supplementName: 'Proteína whey', grams: 30, timeOfDay: '19:00', relativeToWorkout: true});
+    await api('/supplement-plans/' + sp.id + '/doses', 'POST', {supplementName: 'Magnesio', grams: 0.4, timeOfDay: '22:00', relativeToWorkout: false});
+    progId = p.id; planId = sp.id; await load(); toast('Datos de ejemplo cargados');
+  } catch (e) { toast(e.message); }
+  btn.disabled = false; btn.textContent = 'Cargar datos de ejemplo';
+}
+$('#btnSeed').onclick = seed;
+load().catch(e => toast(e.message));
+</script>
+</body></html>

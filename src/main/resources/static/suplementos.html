@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet"><link rel="stylesheet" href="css/app.css"><title>Suplementación · FitSync</title></head>
+<body>
+<main class="wrap">
+  <div class="page-head">
+    <div><h1>Suplementación</h1><p>Programa tus dosis por horario. Un plan puede vincularse a un programa de entrenamiento para sincronizar las dosis post-entreno.</p></div>
+  </div>
+  <div class="split">
+    <aside>
+      <div class="list" id="plans"></div>
+      <form class="panel" id="formPlan">
+        <h2>Nuevo plan</h2>
+        <div class="field"><label for="plink">Vincular a un programa (opcional)</label><select id="plink"></select></div>
+        <button class="btn btn-teal" type="submit">Crear plan</button>
+      </form>
+    </aside>
+    <section id="detail"></section>
+  </div>
+</main>
+<script src="js/app.js"></script>
+<script>
+shell('supl');
+let plans = [], programs = [], selected = null;
+const SUPPS = ['Creatina monohidrato','Proteína whey','Cafeína','Omega-3','Magnesio'];
+
+async function load(selectId) {
+  [plans, programs] = await Promise.all([listPlans(), listPrograms()]);
+  if (selectId) selected = selectId;
+  if (!plans.find(p => p.id === selected)) selected = plans.length ? plans[0].id : null;
+  $('#plink').innerHTML = '<option value="">Sin vincular</option>' + programs.map(p => '<option value="' + p.id + '">' + esc(p.name) + '</option>').join('');
+  renderList(); renderDetail();
+}
+
+function renderList() {
+  $('#plans').innerHTML = plans.length ? plans.map(p =>
+    '<button class="item teal' + (p.id === selected ? ' sel' : '') + '" data-id="' + p.id + '"><b>' + esc(planLabel(p, programs)) + '</b><small>' +
+    p.doses.length + ' dosis programadas</small></button>').join('')
+    : '<p class="empty">Aún no tienes planes. Crea el primero abajo.</p>';
+  document.querySelectorAll('#plans .item').forEach(b => b.onclick = () => { selected = b.dataset.id; renderList(); renderDetail(); });
+}
+
+function renderDetail() {
+  const p = plans.find(x => x.id === selected);
+  if (!p) { $('#detail').innerHTML = '<div class="panel"><p class="empty">Selecciona o crea un plan para ver sus dosis.</p></div>'; return; }
+  const doses = [...p.doses].sort((a, b) => a.timeOfDay.localeCompare(b.timeOfDay));
+  $('#detail').innerHTML =
+    '<div class="stack"><div class="panel"><div class="detail-head"><div><h2>' + esc(planLabel(p, programs)) + '</h2>' +
+    '<span class="chip ' + (p.linkedProgramId ? 'ok' : '') + '">' + (p.linkedProgramId ? 'Sincronizado con entrenamiento' : 'Sin programa vinculado') + '</span></div></div>' +
+    (doses.length ? doses.map(d => '<div class="ex"><b>' + esc(d.supplementName) + '</b><span>' + d.grams + ' g</span><span>' + d.timeOfDay + '</span><span>' + (d.relativeToWorkout ? 'post-entreno' : 'todos los días') + '</span></div>').join('')
+      : '<p class="empty">Este plan no tiene dosis. Agrega la primera con el formulario de abajo.</p>') + '</div>' +
+
+    '<form class="panel" id="formDose"><h2>Programar dosis</h2><div class="rule" id="ruleDose"></div>' +
+    '<div class="row c2"><div class="field"><label for="sname">Suplemento</label><input id="sname" list="supps" required maxlength="80" placeholder="Creatina monohidrato"><datalist id="supps">' + SUPPS.map(s => '<option value="' + s + '">').join('') + '</datalist></div>' +
+    '<div class="field"><label for="sg">Cantidad (g)</label><input id="sg" type="number" step="0.1" min="0.1" max="100" value="5" required></div></div>' +
+    '<div class="field"><label for="st">Hora</label><input id="st" type="time" value="08:00" required></div>' +
+    '<label class="check"><input id="srel" type="checkbox"> Tomar después de entrenar (solo días de entrenamiento)</label>' +
+    '<button class="btn btn-teal" type="submit">Programar dosis</button></form></div>';
+
+  $('#formDose').onsubmit = async ev => {
+    ev.preventDefault(); const box = $('#ruleDose'); clearRule(box);
+    try {
+      await api('/supplement-plans/' + p.id + '/doses', 'POST', {supplementName: $('#sname').value, grams: +$('#sg').value, timeOfDay: $('#st').value, relativeToWorkout: $('#srel').checked});
+      await load(p.id); toast('Dosis programada');
+    } catch (e) { showRule(box, e.message); }
+  };
+}
+
+$('#formPlan').onsubmit = async ev => {
+  ev.preventDefault();
+  try {
+    const p = await api('/supplement-plans', 'POST', {userId: USER_ID, linkedProgramId: $('#plink').value || null});
+    await load(p.id); toast('Plan creado');
+  } catch (e) { toast(e.message); }
+};
+load().catch(e => toast(e.message));
+</script>
+</body></html>
