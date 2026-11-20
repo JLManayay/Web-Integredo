@@ -73,6 +73,55 @@ class UserTest {
     }
 
     @Test
+    @DisplayName("volver a Gratis solo si se tiene Pro")
+    void cancelPro() {
+        User u = athlete();
+        assertThatThrownBy(u::cancelPro).hasMessageContaining("No tienes");
+        u.upgradeToPro(Instant.now());
+        u.cancelPro();
+        assertThat(u.plan()).isEqualTo(SubscriptionPlan.GRATIS);
+        assertThat(u.proSince()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("solo el entrenador del atleta puede quitarlo de su lista")
+    void removeCoach() {
+        User a = athlete();
+        User c = coach(true);
+        a.assignCoach(c);
+        assertThatThrownBy(() -> a.removeCoach(java.util.UUID.randomUUID())).hasMessageContaining("no está en tu lista");
+        a.removeCoach(c.id());
+        assertThat(a.coachId()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("un atleta no puede ser entrenador de otro ni personalizar marca")
+    void athleteIsNotCoach() {
+        User a = athlete();
+        User b = User.register("Beto", Email.of("beto@fitsync.com"), "hash", Role.ATLETA);
+        b.upgradeToPro(Instant.now());
+        assertThatThrownBy(() -> a.assignCoach(b)).hasMessageContaining("no es de un entrenador");
+        assertThatThrownBy(() -> b.configureBrand(new Brand("Mi marca", "#000000"))).hasMessageContaining("Solo los entrenadores");
+        assertThatThrownBy(() -> new Brand("X", "#000000")).hasMessageContaining("entre 2 y 40");
+    }
+
+    @Test
+    @DisplayName("la sesión vence en su fecha de expiración")
+    void sessionExpiry() {
+        Instant now = Instant.now();
+        Session s = new Session("hash", java.util.UUID.randomUUID(), now.plusSeconds(60));
+        assertThat(s.isExpired(now)).isFalse();
+        assertThat(s.isExpired(now.plusSeconds(60))).isTrue();
+    }
+
+    @Test
+    @DisplayName("el nombre de la cuenta es obligatorio")
+    void nameRequired() {
+        assertThatThrownBy(() -> User.register(" ", Email.of("x@fitsync.com"), "hash", Role.ATLETA))
+            .isInstanceOf(InvalidUserException.class);
+    }
+
+    @Test
     @DisplayName("el correo se normaliza y se valida")
     void emailFormat() {
         assertThat(Email.of("  Ana@FitSync.com ").value()).isEqualTo("ana@fitsync.com");
