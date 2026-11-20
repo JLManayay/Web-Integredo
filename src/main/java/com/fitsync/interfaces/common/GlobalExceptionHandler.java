@@ -1,6 +1,11 @@
 package com.fitsync.interfaces.common;
 
+import com.fitsync.application.identity.ForbiddenException;
+import com.fitsync.application.identity.PlanRequiredException;
+import com.fitsync.application.identity.UnauthorizedException;
+import com.fitsync.domain.identity.InvalidUserException;
 import com.fitsync.domain.supplement.InvalidSupplementPlanException;
+import com.fitsync.domain.tracking.InvalidCheckInException;
 import com.fitsync.domain.workout.InvalidWorkoutScheduleException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
@@ -38,6 +43,28 @@ public class GlobalExceptionHandler {
         InvalidSupplementPlanException ex, HttpServletRequest request
     ) {
         return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+    }
+
+    /** Reglas de Identidad (correo repetido, entrenador sin Pro...) y del registro diario */
+    @ExceptionHandler({InvalidUserException.class, InvalidCheckInException.class})
+    public ResponseEntity<ErrorResponse> handleBusinessRule(RuntimeException ex, HttpServletRequest request) {
+        return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(UnauthorizedException.class)
+    public ResponseEntity<ErrorResponse> handleUnauthorized(UnauthorizedException ex, HttpServletRequest request) {
+        return build(HttpStatus.UNAUTHORIZED, ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(ForbiddenException.class)
+    public ResponseEntity<ErrorResponse> handleForbidden(ForbiddenException ex, HttpServletRequest request) {
+        return build(HttpStatus.FORBIDDEN, ex.getMessage(), request);
+    }
+
+    /** La función es del plan Pro: 402 Payment Required. */
+    @ExceptionHandler(PlanRequiredException.class)
+    public ResponseEntity<ErrorResponse> handlePlanRequired(PlanRequiredException ex, HttpServletRequest request) {
+        return build(HttpStatus.PAYMENT_REQUIRED, ex.getMessage(), request);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

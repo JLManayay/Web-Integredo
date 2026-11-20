@@ -13,7 +13,7 @@
 
     <groupId>com.fitsync</groupId>
     <artifactId>fitsync-backend</artifactId>
-    <version>0.1.0</version>
+    <version>2.0.0</version>
     <name>fitsync-backend</name>
     <description>Backend de FitSync — Spring Boot + DDD + TDD (UTP, Desarrollo Web Integrado)</description>
 
@@ -38,6 +38,12 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
+        <!-- BCrypt para las contraseñas -->
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-crypto</artifactId>
         </dependency>
 
         <!-- PostgreSQL -->

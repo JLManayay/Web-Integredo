@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet"><link rel="stylesheet" href="css/app.css"><title>Atletas · FitSync</title></head>
+<body>
+<main class="wrap">
+  <div class="page-head">
+    <div><h1>Mis atletas</h1><p>Agrega atletas por su correo, revisa su semana y su adherencia, y personaliza la marca que ven.</p></div>
+  </div>
+  <div id="content"></div>
+</main>
+<script src="js/app.js"></script>
+<script>
+async function load() {
+  if (!isCoach()) {
+    $('#content').innerHTML = '<div class="panel"><p class="empty">Esta sección es para cuentas de entrenador.</p></div>';
+    return;
+  }
+  if (VIEW) { setView(null); VIEW = null; }
+  const athletes = await api('/coach/athletes');
+  const brand = ME.brand || {name: '', color: '#FF6B4A'};
+  const list = athletes.length ? athletes.map(a =>
+    '<div class="row-a"><div><b>' + esc(a.fullName) + '</b><small>' + esc(a.email) + '</small></div>' +
+    '<div>' + (a.programName ? esc(a.programName) : '<span class="empty">Sin programa</span>') + '<small>' + a.programs + ' programa(s) · ' + a.plans + ' plan(es)</small></div>' +
+    '<div>' + (a.weekPercent == null ? '<span class="chip">Sin datos</span>' : '<span class="chip ' + (a.weekPercent >= 70 ? 'ok' : a.weekPercent >= 40 ? 'warn' : 'late') + '">' + a.weekPercent + '% esta semana</span>') + '</div>' +
+    '<div class="acts"><button class="btn btn-teal" data-view="' + a.id + '" data-name="' + esc(a.fullName) + '">Ver su semana</button>' +
+    '<button class="btn btn-ghost" data-remove="' + a.id + '">Quitar</button></div></div>').join('')
+    : '<p class="empty">Todavía no tienes atletas. Agrega el primero con su correo.</p>';
+
+  $('#content').innerHTML = (isPro() ? '' :
+    '<div class="upsell" style="margin:0 0 20px">Para gestionar atletas y usar tu propia marca necesitas el <b>plan Pro</b>. <a href="plan.html">Pasar a Pro</a></div>') +
+    '<div class="split"><div class="stack">' +
+    '<form class="panel" id="formAdd"><h2>Agregar atleta</h2><div class="rule" id="ruleAdd"></div>' +
+    '<div class="field"><label for="aemail">Correo del atleta (debe tener cuenta en FitSync)</label><input id="aemail" type="email" required placeholder="demo@fitsync.com"></div>' +
+    '<button class="btn btn-coral" type="submit">Agregar</button></form>' +
+    '<form class="panel" id="formBrand"><h2>Marca blanca</h2><div class="rule" id="ruleBrand"></div>' +
+    '<div class="preview" id="bprev"><i></i><span></span></div>' +
+    '<div class="field"><label for="bname">Nombre de tu marca</label><input id="bname" maxlength="40" value="' + esc(brand.name) + '" placeholder="Ej. Team Fuerza"></div>' +
+    '<div class="field"><label for="bcolor">Color principal</label><div class="swatch"><input id="bcolor" type="color" value="' + brand.color + '"><span id="bhex">' + brand.color + '</span></div></div>' +
+    '<button class="btn btn-teal" type="submit">Guardar marca</button></form>' +
+    '</div><div class="panel athletes"><h2>Atletas a tu cargo (' + athletes.length + ')</h2>' + list + '</div></div>';
+
+  const preview = () => {
+    const c = $('#bcolor').value; $('#bhex').textContent = c.toUpperCase();
+    $('#bprev i').style.background = c; $('#bprev span').textContent = 'FitSync · ' + ($('#bname').value || 'tu marca');
+  };
+  $('#bname').oninput = preview; $('#bcolor').oninput = preview; preview();
+
+  $('#formAdd').onsubmit = async ev => {
+    ev.preventDefault(); clearRule($('#ruleAdd'));
+    try { await api('/coach/athletes', 'POST', {email: $('#aemail').value}); toast('Atleta agregado'); load(); }
+    catch (e) { showRule($('#ruleAdd'), e.message); }
+  };
+  $('#formBrand').onsubmit = async ev => {
+    ev.preventDefault(); clearRule($('#ruleBrand'));
+    try { await api('/coach/brand', 'PUT', {name: $('#bname').value, color: $('#bcolor').value}); toast('Marca guardada'); setTimeout(() => location.reload(), 800); }
+    catch (e) { showRule($('#ruleBrand'), e.message); }
+  };
+  document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => {
+    setView({id: b.dataset.view, fullName: b.dataset.name}); location.href = 'index.html';
+  });
+  document.querySelectorAll('[data-remove]').forEach(b => b.onclick = async () => {
+    if (!confirm('¿Quitar a este atleta de tu lista? Sus datos no se borran.')) return;
+    try { await api('/coach/athletes/' + b.dataset.remove, 'DELETE'); toast('Atleta quitado'); load(); } catch (e) { toast(e.message); }
+  });
+}
+start('atletas', load);
+</script>
+</body></html>

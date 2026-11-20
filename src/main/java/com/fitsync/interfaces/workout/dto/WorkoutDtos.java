@@ -11,7 +11,7 @@ import java.util.stream.Collectors;
 public class WorkoutDtos {
 
     public record CreateWorkoutProgramRequest(
-        @NotNull UUID userId,
+        UUID userId,
         @NotBlank String name,
         @NotNull SplitType splitType
     ) {}

@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet"><link rel="stylesheet" href="css/app.css"><title>Mi plan · FitSync</title></head>
+<body>
+<main class="wrap">
+  <div class="page-head">
+    <div><h1>Mi plan</h1><p>Empieza gratis. Pasa a Pro cuando necesites historial completo o gestionar a varios atletas.</p></div>
+  </div>
+  <div id="content"></div>
+</main>
+<div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="mTitle">
+  <div class="panel">
+    <h2 id="mTitle">Confirmar pago del plan Pro</h2>
+    <p>Se registrará un pago de <b id="mAmount"></b> por un mes de FitSync Pro.</p>
+    <p class="empty"><b>Pago simulado:</b> esta versión usa una pasarela de prueba. No se pide ninguna tarjeta y no se cobra dinero real; solo queda registrada la operación.</p>
+    <div class="actions"><button class="btn btn-ghost" id="mCancel">Cancelar</button><button class="btn btn-coral" id="mOk">Confirmar pago</button></div>
+  </div>
+</div>
+<script src="js/app.js"></script>
+<script>
+let info = null;
+const money = (a, c) => (c === 'PEN' ? 'S/ ' : c + ' ') + Number(a).toFixed(2);
+
+async function load() {
+  info = await api('/subscription');
+  render();
+}
+
+function render() {
+  const pro = info.plan === 'PRO';
+  const since = ME.proSince ? new Date(ME.proSince).toLocaleDateString('es-PE', {day: 'numeric', month: 'long', year: 'numeric'}) : '';
+  const rows = info.payments.map(p => '<tr><td>' + new Date(p.paidAt).toLocaleString('es-PE') + '</td><td>' + money(p.amount, p.currency) +
+    '</td><td>' + esc(p.method) + '</td><td>' + esc(p.reference) + '</td></tr>').join('');
+  $('#content').innerHTML =
+    '<div class="plans">' +
+    '<div class="plan-card' + (pro ? '' : ' current') + '"><h3>Gratis ' + (pro ? '' : '<span class="chip ok">Tu plan</span>') + '</h3><div class="price">S/ 0</div><ul>' +
+      '<li>Rutinas ilimitadas (Push/Pull/Legs y variantes)</li><li>Un plan de suplementación activo</li><li>Adherencia de la semana actual</li><li>Recordatorios de dosis</li></ul></div>' +
+    '<div class="plan-card pro' + (pro ? ' current' : '') + '"><h3>Pro ' + (pro ? '<span class="chip pro">Tu plan desde ' + esc(since) + '</span>' : '') + '</h3>' +
+      '<div class="price">' + money(info.proMonthlyPrice, info.currency) + ' <span>/ mes</span></div><ul>' +
+      '<li>Historial completo de adherencia (12 semanas)</li><li>Múltiples planes de suplementación</li>' +
+      '<li>Gestión de atletas ilimitados (entrenadores)</li><li>Marca blanca: tu nombre y tu color para tus atletas</li></ul>' +
+      (pro ? '<button class="btn btn-ghost" id="btnCancel">Volver al plan Gratis</button>' : '<button class="btn btn-coral" id="btnUpgrade">Pasar a Pro</button>') + '</div>' +
+    '</div>' +
+    '<div class="panel" style="margin-top:22px"><h2>Pagos</h2>' + (rows
+      ? '<table class="simple"><thead><tr><th>Fecha</th><th>Monto</th><th>Método</th><th>Referencia</th></tr></thead><tbody>' + rows + '</tbody></table>'
+      : '<p class="empty">Todavía no hay pagos registrados.</p>') + '</div>';
+
+  const up = $('#btnUpgrade');
+  if (up) up.onclick = () => { $('#mAmount').textContent = money(info.proMonthlyPrice, info.currency); $('#modal').classList.add('show'); $('#mOk').focus(); };
+  const cancel = $('#btnCancel');
+  if (cancel) cancel.onclick = async () => {
+    if (!confirm('¿Volver al plan Gratis? Perderás el historial completo y, si eres entrenador, la gestión de atletas nuevos.')) return;
+    try { info = await api('/subscription/cancel', 'POST'); ME = await api('/me'); toast('Volviste al plan Gratis'); setTimeout(() => location.reload(), 900); }
+    catch (e) { toast(e.message); }
+  };
+}
+
+$('#mCancel').onclick = () => $('#modal').classList.remove('show');
+$('#mOk').onclick = async () => {
+  const b = $('#mOk'); b.disabled = true;
+  try {
+    const pay = await api('/subscription/upgrade', 'POST');
+    $('#modal').classList.remove('show');
+    toast('¡Ya eres Pro! Referencia ' + pay.reference);
+    setTimeout(() => location.reload(), 1200);
+  } catch (e) { toast(e.message); }
+  b.disabled = false;
+};
+document.addEventListener('keydown', e => { if (e.key === 'Escape') $('#modal').classList.remove('show'); });
+start('plan', load);
+</script>
+</body></html>

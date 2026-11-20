@@ -21,7 +21,6 @@
 </main>
 <script src="js/app.js"></script>
 <script>
-shell('entreno');
 let programs = [], selected = null;
 const MUSCLES = ['Pecho','Espalda','Piernas','Hombros','Bíceps','Tríceps','Core'];
 
@@ -85,10 +84,10 @@ function renderDetail() {
 $('#formProgram').onsubmit = async ev => {
   ev.preventDefault();
   try {
-    const p = await api('/workout-programs', 'POST', {userId: USER_ID, name: $('#pname').value, splitType: $('#psplit').value});
+    const p = await api('/workout-programs', 'POST', {userId: ownerId(), name: $('#pname').value, splitType: $('#psplit').value});
     $('#pname').value = ''; await load(p.id); toast('Programa creado');
   } catch (e) { toast(e.message); }
 };
-load().catch(e => toast(e.message));
+start('entreno', load);
 </script>
 </body></html>

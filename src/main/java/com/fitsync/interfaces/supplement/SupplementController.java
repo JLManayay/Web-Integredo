@@ -1,5 +1,7 @@
 package com.fitsync.interfaces.supplement;
 
+import com.fitsync.application.identity.AccessGuard;
+import com.fitsync.application.identity.CurrentUser;
 import com.fitsync.application.supplement.*;
 import com.fitsync.domain.supplement.SupplementPlan;
 import com.fitsync.interfaces.supplement.dto.SupplementDtos.*;
@@ -17,32 +19,43 @@ public class SupplementController {
 
     private final SupplementCommandHandler commandHandler;
     private final SupplementQueryHandler queryHandler;
+    private final AccessGuard guard;
 
-    public SupplementController(SupplementCommandHandler commandHandler, SupplementQueryHandler queryHandler) {
+    public SupplementController(SupplementCommandHandler commandHandler, SupplementQueryHandler queryHandler, AccessGuard guard) {
         this.commandHandler = commandHandler;
         this.queryHandler = queryHandler;
+        this.guard = guard;
     }
 
     @PostMapping
-    public ResponseEntity<SupplementPlanResponse> create(@Valid @RequestBody CreateSupplementPlanRequest request) {
-        SupplementPlan plan = commandHandler.handle(new CreateSupplementPlanCommand(request.userId(), request.linkedProgramId()));
+    public ResponseEntity<SupplementPlanResponse> create(CurrentUser me, @Valid @RequestBody CreateSupplementPlanRequest request) {
+        UUID owner = guard.resolveOwner(me, request.userId());
+        SupplementPlan plan = commandHandler.handle(new CreateSupplementPlanCommand(owner, request.linkedProgramId()));
         return ResponseEntity.created(URI.create("/api/supplement-plans/" + plan.id()))
             .body(SupplementPlanResponse.from(plan));
     }
 
     @GetMapping
-    public List<SupplementPlanResponse> listByUser(@RequestParam UUID userId) {
-        return queryHandler.handle(new ListSupplementPlansByUserQuery(userId)).stream().map(SupplementPlanResponse::from).toList();
+    public List<SupplementPlanResponse> listByUser(CurrentUser me, @RequestParam(required = false) UUID userId) {
+        UUID owner = guard.resolveOwner(me, userId);
+        return queryHandler.handle(new ListSupplementPlansByUserQuery(owner)).stream().map(SupplementPlanResponse::from).toList();
     }
 
     @GetMapping("/{id}")
-    public SupplementPlanResponse getById(@PathVariable UUID id) {
-        return SupplementPlanResponse.from(queryHandler.handle(new GetSupplementPlanQuery(id)));
+    public SupplementPlanResponse getById(CurrentUser me, @PathVariable UUID id) {
+        return SupplementPlanResponse.from(accessible(me, id));
     }
 
     @PostMapping("/{id}/doses")
-    public SupplementPlanResponse scheduleDose(@PathVariable UUID id, @Valid @RequestBody ScheduleDoseRequest request) {
+    public SupplementPlanResponse scheduleDose(CurrentUser me, @PathVariable UUID id, @Valid @RequestBody ScheduleDoseRequest request) {
+        accessible(me, id);
         return SupplementPlanResponse.from(commandHandler.handle(new ScheduleDoseCommand(
             id, request.supplementName(), request.grams(), request.timeOfDay(), request.relativeToWorkout())));
+    }
+
+    private SupplementPlan accessible(CurrentUser me, UUID planId) {
+        SupplementPlan plan = queryHandler.handle(new GetSupplementPlanQuery(planId));
+        guard.ensureCanAccess(me, plan.userId());
+        return plan;
     }
 }

@@ -3,7 +3,7 @@ spring:
     name: fitsync-backend
 
   datasource:
-    url: jdbc:postgresql://localhost:5432/fitsync
+    url: jdbc:postgresql://localhost:5433/fitsync
     username: fitsync
     password: fitsync
 
@@ -21,4 +21,8 @@ spring:
     locations: classpath:db/migration
 
 server:
-  port: 8081
+  # 8082 para poder correr esta versión al mismo tiempo que la original (8081)
+  port: 8082
+
+fitsync:
+  zona-horaria: America/Lima

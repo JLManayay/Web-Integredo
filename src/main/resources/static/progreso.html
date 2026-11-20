@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet"><link rel="stylesheet" href="css/app.css"><title>Progreso · FitSync</title></head>
+<body>
+<main class="wrap">
+  <div class="page-head">
+    <div><h1>Progreso</h1><p>Adherencia: qué porcentaje de lo planificado (entrenamientos y dosis) se cumplió cada semana.</p></div>
+  </div>
+  <div id="content"></div>
+</main>
+<script src="js/app.js"></script>
+<script>
+let programs = [], plans = [], progId = null, planId = null;
+const DIA = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+
+async function load() {
+  [programs, plans] = await Promise.all([listPrograms(), listPlans()]);
+  const saved = loadSelection();
+  progId = programs.find(p => p.id === saved.progId) ? saved.progId : (programs[0] && programs[0].id) || null;
+  planId = plans.find(p => p.id === saved.planId) ? saved.planId : defaultPlanFor(plans, progId);
+  render();
+}
+
+async function render() {
+  const box = $('#content');
+  if (!programs.length && !plans.length) {
+    box.innerHTML = '<div class="panel"><p class="empty">Todavía no hay programa ni plan. Créalos o carga los datos de ejemplo en <a href="index.html">Semana</a>.</p></div>';
+    return;
+  }
+  const q = '?weeks=8' + (progId ? '&programId=' + progId : '') + (planId ? '&planId=' + planId : '') + ownerQS('&');
+  const h = await api('/adherence/history' + q);
+  const cur = h.weeks[h.weeks.length - 1];
+  const prev = h.weeks.length > 1 ? h.weeks[h.weeks.length - 2] : null;
+  const fmt = d => new Date(d + 'T00:00:00').toLocaleDateString('es-PE', {day: 'numeric', month: 'short'});
+
+  const dayBars = cur.days.map(d => {
+    const pct = d.expected ? Math.round(d.done * 100 / d.expected) : 0;
+    return '<div class="bar' + (d.date === cur.days[cur.days.length - 1].date ? ' cur' : '') + '"><em>' + (d.expected ? pct + '%' : '—') +
+      '</em><i style="height:' + Math.max(pct, 1) + '%"></i></div>';
+  }).join('');
+  const dayAxis = cur.days.map(d => '<span>' + DIA[new Date(d.date + 'T00:00:00').getDay()] + '</span>').join('');
+
+  const weekBars = h.weeks.map((w, i) => '<div class="bar' + (i === h.weeks.length - 1 ? ' cur' : '') + '"><em>' + w.percent + '%</em><i style="height:' + Math.max(w.percent, 1) + '%"></i></div>').join('');
+  const weekAxis = h.weeks.map(w => '<span>' + fmt(w.weekStart) + '</span>').join('');
+
+  box.innerHTML = pickers(programs, plans, progId, planId) +
+    '<div class="kpis"><div class="kpi"><b>' + cur.percent + '%</b><span>adherencia esta semana</span></div>' +
+    '<div class="kpi"><b>' + cur.done + ' / ' + cur.expected + '</b><span>cumplidos de lo planificado hasta hoy</span></div>' +
+    '<div class="kpi"><b>' + (prev ? (cur.percent - prev.percent >= 0 ? '+' : '') + (cur.percent - prev.percent) + ' pts' : '—') + '</b><span>' +
+    (prev ? 'frente a la semana pasada' : 'comparación semanal (plan Pro)') + '</span></div></div>' +
+    '<div class="panel"><h2>Esta semana, día por día</h2><div class="bars">' + dayBars + '</div><div class="axis">' + dayAxis + '</div></div>' +
+    (h.limited
+      ? '<div class="upsell">El historial de las últimas semanas es parte del <b>plan Pro</b>. Con Gratis ves solo la semana actual. <a href="plan.html">Ver planes</a></div>'
+      : '<div class="panel" style="margin-top:20px"><h2>Historial de las últimas ' + h.weeks.length + ' semanas</h2><div class="bars">' + weekBars + '</div><div class="axis">' + weekAxis + '</div></div>');
+
+  $('#selProg').onchange = e => { progId = e.target.value; planId = defaultPlanFor(plans, progId); saveSelection(progId, planId); render(); };
+  $('#selPlan').onchange = e => { planId = e.target.value || null; saveSelection(progId, planId); render(); };
+}
+start('progreso', load);
+</script>
+</body></html>

@@ -4,6 +4,29 @@ Backend de FitSync construido con **Spring Boot 3 + Domain-Driven Design + TDD**
 correspondiente a los Capítulos 3 y 4 del informe del curso Desarrollo Web
 Integrado (UTP).
 
+## Versión AvaProy: lo nuevo
+
+Esta carpeta es la versión ampliada. Agrega lo que la landing ofrecía y faltaba:
+
+| Función | Dónde | Detalle |
+|---|---|---|
+| Inicio de sesión y roles | `login.html`, contexto `identity` | Registro con rol **Atleta** o **Entrenador**, contraseñas con BCrypt y sesión por token (`Authorization: Bearer`). |
+| Plan Pro y pagos | `plan.html`, contexto `subscription` | Pasar a Pro (S/ 29 al mes) con una **pasarela simulada**: no pide tarjeta ni cobra dinero real, solo registra la operación (`SIM-…`). El puerto `PaymentGateway` permite cambiarla por una real. |
+| Límites del plan | `SupplementCommandHandler` | Con Gratis, un solo plan de suplementación (402 si se intenta otro). |
+| Adherencia e historial | `index.html` (panel Hoy), `progreso.html`, contexto `tracking` | El atleta marca entrenamientos y dosis cumplidos; se calcula el % semanal. Historial de 12 semanas solo en Pro. |
+| Entrenador y marca blanca | `atletas.html`, contexto `coach` | Un entrenador Pro agrega atletas por correo, ve su semana y su adherencia, y define nombre y color de marca que ven sus atletas. |
+| Recordatorios de dosis | panel Hoy de `index.html` | Estado de cada dosis del día (pendiente, atrasada, tomada) y aviso del navegador a la hora de cada una mientras FitSync está abierto. |
+
+**Cuentas de prueba** (se crean al arrancar): `demo@fitsync.com` (atleta) y `entrenador@fitsync.com` (entrenador), ambas con la contraseña `demo1234`.
+
+**Para correr esta versión junto a la original:** usa su propia base (`fitsync-avaproy-db`, puerto 5433) y el puerto **8082**.
+
+```bash
+docker compose up -d
+mvn spring-boot:run
+# http://localhost:8082/login.html
+```
+
 ## Estructura del proyecto
 
 ```

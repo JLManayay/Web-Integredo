@@ -1,16 +1,17 @@
 # Levanta solo PostgreSQL, con las mismas credenciales de application.yml.
+# Usa su propio contenedor y el puerto 5433 para no mezclarse con la base del proyecto original.
 # Uso:  docker compose up -d
 services:
   db:
     image: postgres:16
-    container_name: fitsync-db
+    container_name: fitsync-avaproy-db
     environment:
       POSTGRES_DB: fitsync
       POSTGRES_USER: fitsync
       POSTGRES_PASSWORD: fitsync
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
-      - fitsync-data:/var/lib/postgresql/data
+      - fitsync-avaproy-data:/var/lib/postgresql/data
 volumes:
-  fitsync-data:
+  fitsync-avaproy-data:

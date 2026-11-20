@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet"><link rel="stylesheet" href="css/app.css"><title>Ingresar · FitSync</title></head>
+<body>
+<div id="toast" role="status"></div>
+<main class="wrap">
+  <div class="auth">
+    <a class="brand" href="landing.html"><i></i>FitSync</a>
+    <div class="panel">
+      <div class="auth-tabs"><button id="tabLogin" class="on" type="button">Ingresar</button><button id="tabRegister" type="button">Crear cuenta</button></div>
+      <div class="rule" id="ruleAuth"></div>
+
+      <form id="formLogin">
+        <div class="field"><label for="lemail">Correo</label><input id="lemail" type="email" autocomplete="username" required></div>
+        <div class="field"><label for="lpass">Contraseña</label><input id="lpass" type="password" autocomplete="current-password" required></div>
+        <button class="btn btn-coral" type="submit" style="width:100%">Ingresar</button>
+        <div class="demo-accounts">Cuentas de prueba (contraseña <b>demo1234</b>):<br>
+          <button class="btn btn-ghost" type="button" data-demo="demo@fitsync.com">Atleta demo</button>
+          <button class="btn btn-ghost" type="button" data-demo="entrenador@fitsync.com">Entrenador demo</button>
+        </div>
+      </form>
+
+      <form id="formRegister" hidden>
+        <div class="field"><label for="rname">Nombre completo</label><input id="rname" required minlength="2"></div>
+        <div class="field"><label for="remail">Correo</label><input id="remail" type="email" autocomplete="username" required></div>
+        <div class="field"><label for="rpass">Contraseña (mínimo 8 caracteres)</label><input id="rpass" type="password" autocomplete="new-password" required minlength="8"></div>
+        <div class="field"><label for="rrole">Tipo de cuenta</label><select id="rrole">
+          <option value="ATLETA">Atleta: organizo mi rutina y mi suplementación</option>
+          <option value="ENTRENADOR">Entrenador: gestiono a mis atletas</option></select></div>
+        <button class="btn btn-coral" type="submit" style="width:100%">Crear cuenta gratis</button>
+      </form>
+    </div>
+  </div>
+</main>
+<script src="js/app.js"></script>
+<script>
+const rule = $('#ruleAuth');
+function tab(login) {
+  $('#tabLogin').classList.toggle('on', login); $('#tabRegister').classList.toggle('on', !login);
+  $('#formLogin').hidden = !login; $('#formRegister').hidden = login; clearRule(rule);
+}
+$('#tabLogin').onclick = () => tab(true);
+$('#tabRegister').onclick = () => tab(false);
+if (location.hash === '#registro') tab(false);
+
+function enter(res) {
+  store(TOKEN_KEY, res.token); store(VIEW_KEY, null);
+  location.href = res.user.role === 'ENTRENADOR' ? 'atletas.html' : 'index.html';
+}
+async function login(email, password) {
+  clearRule(rule);
+  try { enter(await api('/auth/login', 'POST', {email, password})); }
+  catch (e) { showRule(rule, e.message); }
+}
+$('#formLogin').onsubmit = ev => { ev.preventDefault(); login($('#lemail').value, $('#lpass').value); };
+document.querySelectorAll('[data-demo]').forEach(b => b.onclick = () => login(b.dataset.demo, 'demo1234'));
+$('#formRegister').onsubmit = async ev => {
+  ev.preventDefault(); clearRule(rule);
+  try {
+    enter(await api('/auth/register', 'POST', {fullName: $('#rname').value, email: $('#remail').value,
+      password: $('#rpass').value, role: $('#rrole').value}));
+  } catch (e) { showRule(rule, e.message); }
+};
+if (read(TOKEN_KEY)) api('/me').then(() => location.href = 'index.html').catch(() => {});
+</script>
+</body></html>

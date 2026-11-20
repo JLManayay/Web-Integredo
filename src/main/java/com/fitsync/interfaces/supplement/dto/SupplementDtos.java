@@ -10,7 +10,8 @@ import java.util.UUID;
 
 public class SupplementDtos {
 
-    public record CreateSupplementPlanRequest(@NotNull UUID userId, UUID linkedProgramId) {}
+    /** userId vacío = el propio usuario; un entrenador puede indicar a uno de sus atletas. */
+    public record CreateSupplementPlanRequest(UUID userId, UUID linkedProgramId) {}
 
     public record ScheduleDoseRequest(
         @NotBlank String supplementName,

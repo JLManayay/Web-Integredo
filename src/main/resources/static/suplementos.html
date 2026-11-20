@@ -19,7 +19,6 @@
 </main>
 <script src="js/app.js"></script>
 <script>
-shell('supl');
 let plans = [], programs = [], selected = null;
 const SUPPS = ['Creatina monohidrato','Proteína whey','Cafeína','Omega-3','Magnesio'];
 
@@ -68,10 +67,10 @@ function renderDetail() {
 $('#formPlan').onsubmit = async ev => {
   ev.preventDefault();
   try {
-    const p = await api('/supplement-plans', 'POST', {userId: USER_ID, linkedProgramId: $('#plink').value || null});
+    const p = await api('/supplement-plans', 'POST', {userId: ownerId(), linkedProgramId: $('#plink').value || null});
     await load(p.id); toast('Plan creado');
   } catch (e) { toast(e.message); }
 };
-load().catch(e => toast(e.message));
+start('supl', load);
 </script>
 </body></html>

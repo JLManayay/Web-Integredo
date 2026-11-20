@@ -3,27 +3,93 @@
 <body>
 <main class="wrap">
   <div class="page-head">
-    <div><h1>Tu semana</h1><p>Entrenamiento y suplementación en un solo tablero. Las dosis post-entreno aparecen solo los días que entrenas.</p></div>
+    <div><h1 id="title">Tu semana</h1><p>Entrenamiento y suplementación en un solo tablero. Las dosis post-entreno aparecen solo los días que entrenas.</p></div>
     <button class="btn btn-ghost" id="btnSeed">Cargar datos de ejemplo</button>
   </div>
+  <div id="today"></div>
   <div id="content"></div>
 </main>
 <script src="js/app.js"></script>
 <script>
-shell('semana');
-let programs = [], plans = [], progId = null, planId = null;
+let programs = [], plans = [], progId = null, planId = null, reminderTimers = [];
+const REMIND_KEY = 'fitsync.reminders';
 
 async function load() {
+  if (VIEW) $('#title').textContent = 'Semana de ' + VIEW.fullName;
   [programs, plans] = await Promise.all([listPrograms(), listPlans()]);
-  if (!programs.find(p => p.id === progId)) progId = programs.length ? programs[0].id : null;
-  if (!plans.find(p => p.id === planId)) pickPlanFor(progId);
+  const saved = loadSelection();
+  progId = programs.find(p => p.id === (progId || saved.progId)) ? (progId || saved.progId) : (programs[0] && programs[0].id) || null;
+  planId = plans.find(p => p.id === (planId || saved.planId)) ? (planId || saved.planId) : defaultPlanFor(plans, progId);
   render();
-}
-function pickPlanFor(pid) {
-  const linked = plans.find(p => p.linkedProgramId === pid);
-  planId = linked ? linked.id : (plans.length ? plans[0].id : null);
+  await loadToday();
 }
 
+/* ---------- Hoy: check-in y recordatorios ---------- */
+async function loadToday() {
+  const box = $('#today');
+  if (!progId && !planId) { box.innerHTML = ''; return; }
+  const q = '?' + [progId && 'programId=' + progId, planId && 'planId=' + planId].filter(Boolean).join('&') + ownerQS('&');
+  const t = await api('/today' + q);
+  const readOnly = !!VIEW;
+  const fecha = new Date(t.date + 'T00:00:00').toLocaleDateString('es-PE', {weekday: 'long', day: 'numeric', month: 'long'});
+  const items = [];
+  if (t.trainingDay) items.push('<label class="task' + (t.workoutDone ? ' done' : '') + '"><input type="checkbox" data-kind="WORKOUT" data-ref="' + progId + '"' +
+    (t.workoutDone ? ' checked' : '') + (readOnly ? ' disabled' : '') + '><span class="grow">Entrenamiento de hoy<small>' + esc(t.programName || '') + '</small></span>' +
+    '<span class="chip ' + (t.workoutDone ? 'ok' : 'warn') + '">' + (t.workoutDone ? 'Hecho' : 'Pendiente') + '</span></label>');
+  t.doses.forEach(d => {
+    const chip = d.status === 'TOMADA' ? ['ok', 'Tomada'] : d.status === 'ATRASADA' ? ['late', 'Atrasada'] : ['warn', 'Pendiente'];
+    items.push('<label class="task' + (d.status === 'TOMADA' ? ' done' : '') + '"><input type="checkbox" data-kind="DOSE" data-ref="' + d.id + '"' +
+      (d.status === 'TOMADA' ? ' checked' : '') + (readOnly ? ' disabled' : '') + '><span class="grow">' + esc(d.name) + '<small>' + d.grams + ' g · ' + d.time +
+      (d.postWorkout ? ' · post-entreno' : '') + '</small></span><span class="chip ' + chip[0] + '">' + chip[1] + '</span></label>');
+  });
+  const on = read(REMIND_KEY) === 'on';
+  box.innerHTML = '<div class="panel today"><div><h2>Hoy · ' + esc(fecha) + '</h2><p class="sub">' +
+    (t.trainingDay ? 'Día de entrenamiento.' : 'Día de descanso: solo las dosis fijas.') +
+    (readOnly ? ' Solo el atleta puede marcar lo que cumplió.' : ' Marca lo que ya cumpliste; cuenta para tu adherencia.') + '</p>' +
+    '<div class="tasks">' + (items.join('') || '<p class="empty">No hay nada programado para hoy.</p>') + '</div></div>' +
+    (readOnly ? '' : '<button class="btn ' + (on ? 'btn-ghost' : 'btn-teal') + '" id="btnRemind">' + (on ? 'Recordatorios activos' : 'Activar recordatorios') + '</button>') + '</div>';
+
+  if (!readOnly) {
+    box.querySelectorAll('input[type=checkbox]').forEach(cb => cb.onchange = async () => {
+      try {
+        await api('/adherence/check-ins', 'POST', {date: t.date, kind: cb.dataset.kind, refId: cb.dataset.ref,
+          programId: progId, planId: planId, done: cb.checked});
+        toast(cb.checked ? '¡Registrado!' : 'Marca quitada'); loadToday();
+      } catch (e) { cb.checked = !cb.checked; toast(e.message); }
+    });
+    $('#btnRemind').onclick = toggleReminders;
+    scheduleReminders(t);
+  }
+}
+
+/** Recordatorios en el navegador: avisan a la hora de cada dosis pendiente mientras FitSync esté abierto. */
+async function toggleReminders() {
+  if (read(REMIND_KEY) === 'on') { store(REMIND_KEY, null); toast('Recordatorios desactivados'); return loadToday(); }
+  if ('Notification' in window && Notification.permission === 'default') await Notification.requestPermission();
+  store(REMIND_KEY, 'on');
+  toast(('Notification' in window && Notification.permission === 'granted')
+    ? 'Te avisaremos a la hora de cada dosis' : 'Te avisaremos dentro de la página (el navegador bloqueó las notificaciones)');
+  loadToday();
+}
+function scheduleReminders(t) {
+  reminderTimers.forEach(clearTimeout); reminderTimers = [];
+  if (read(REMIND_KEY) !== 'on') return;
+  const now = new Date();
+  t.doses.filter(d => d.status === 'PENDIENTE').forEach(d => {
+    const [h, m] = d.time.split(':').map(Number);
+    const at = new Date(now); at.setHours(h, m, 0, 0);
+    const ms = at - now;
+    if (ms > 0 && ms < 24 * 3600 * 1000) reminderTimers.push(setTimeout(() => notify(d), ms));
+  });
+}
+function notify(d) {
+  const body = d.name + ' · ' + d.grams + ' g' + (d.postWorkout ? ' (post-entreno)' : '');
+  if ('Notification' in window && Notification.permission === 'granted') new Notification('Hora de tu dosis', {body});
+  toast('Hora de tu dosis: ' + body);
+  loadToday();
+}
+
+/* ---------- tablero semanal ---------- */
 function render() {
   const box = $('#content');
   if (!programs.length) {
@@ -50,17 +116,14 @@ function render() {
       ex + (dz ? '<div class="sep">Suplementos</div>' + dz : '') + '</div>';
   }).join('');
 
-  box.innerHTML =
-    '<div class="picks"><div><label for="selProg">Programa de entrenamiento</label><select id="selProg">' +
-    programs.map(p => '<option value="' + p.id + '"' + (p.id === progId ? ' selected' : '') + '>' + esc(p.name) + '</option>').join('') + '</select></div>' +
-    '<div><label for="selPlan">Plan de suplementación</label><select id="selPlan"><option value="">Ninguno</option>' +
-    plans.map(p => '<option value="' + p.id + '"' + (p.id === planId ? ' selected' : '') + '>' + esc(planLabel(p, programs)) + '</option>').join('') + '</select></div></div>' +
+  box.innerHTML = pickers(programs, plans, progId, planId) +
     '<div class="stats"><span><b>' + trainDays + '</b>días de entrenamiento</span><span><b>' + totalEx + '</b>ejercicios</span><span><b>' + doses.length + '</b>dosis en el plan</span><span><b>' + (7 - prog.days.length) + '</b>días de descanso</span></div>' +
     '<div class="legend"><span><i style="background:var(--coral)"></i>Entrenamiento</span><span><i style="background:var(--teal)"></i>Suplementación</span></div>' +
     '<div class="board">' + cols + '</div>';
 
-  $('#selProg').onchange = e => { progId = e.target.value; pickPlanFor(progId); render(); };
-  $('#selPlan').onchange = e => { planId = e.target.value || null; render(); };
+  $('#selProg').onchange = e => { progId = e.target.value; planId = defaultPlanFor(plans, progId); saveSelection(progId, planId); render(); loadToday(); };
+  $('#selPlan').onchange = e => { planId = e.target.value || null; saveSelection(progId, planId); render(); loadToday(); };
+  saveSelection(progId, planId);
 }
 
 /** Crea un programa PPL de 6 días con un plan de suplementos vinculado. */
@@ -75,22 +138,26 @@ async function seed() {
       ['FRIDAY', [['Jalón al pecho','Espalda',4,10],['Remo con mancuerna','Espalda',3,12]]],
       ['SATURDAY', [['Prensa de piernas','Piernas',4,12],['Curl femoral','Piernas',3,12]]]
     ];
-    const p = await api('/workout-programs', 'POST', {userId: USER_ID, name: 'Rutina PPL 6 días', splitType: 'PUSH_PULL_LEGS'});
+    const p = await api('/workout-programs', 'POST', {userId: ownerId(), name: 'Rutina PPL 6 días', splitType: 'PUSH_PULL_LEGS'});
     for (const [day, exs] of plan) {
       await api('/workout-programs/' + p.id + '/days', 'POST', {dayOfWeek: day});
       for (const [n, m, s, r] of exs)
         await api('/workout-programs/' + p.id + '/exercises', 'POST', {dayOfWeek: day, exerciseName: n, muscleGroup: m, sets: s, repsPerSet: r, restSeconds: 90});
     }
     await api('/workout-programs/' + p.id + '/publish', 'POST');
-    const sp = await api('/supplement-plans', 'POST', {userId: USER_ID, linkedProgramId: p.id});
-    await api('/supplement-plans/' + sp.id + '/doses', 'POST', {supplementName: 'Creatina monohidrato', grams: 5, timeOfDay: '08:00', relativeToWorkout: false});
-    await api('/supplement-plans/' + sp.id + '/doses', 'POST', {supplementName: 'Proteína whey', grams: 30, timeOfDay: '19:00', relativeToWorkout: true});
-    await api('/supplement-plans/' + sp.id + '/doses', 'POST', {supplementName: 'Magnesio', grams: 0.4, timeOfDay: '22:00', relativeToWorkout: false});
-    progId = p.id; planId = sp.id; await load(); toast('Datos de ejemplo cargados');
+    progId = p.id;
+    try {
+      const sp = await api('/supplement-plans', 'POST', {userId: ownerId(), linkedProgramId: p.id});
+      await api('/supplement-plans/' + sp.id + '/doses', 'POST', {supplementName: 'Creatina monohidrato', grams: 5, timeOfDay: '08:00', relativeToWorkout: false});
+      await api('/supplement-plans/' + sp.id + '/doses', 'POST', {supplementName: 'Proteína whey', grams: 30, timeOfDay: '19:00', relativeToWorkout: true});
+      await api('/supplement-plans/' + sp.id + '/doses', 'POST', {supplementName: 'Magnesio', grams: 0.4, timeOfDay: '22:00', relativeToWorkout: false});
+      planId = sp.id;
+    } catch (e) { toast(e.message); }
+    saveSelection(progId, planId); await load(); toast('Datos de ejemplo cargados');
   } catch (e) { toast(e.message); }
   btn.disabled = false; btn.textContent = 'Cargar datos de ejemplo';
 }
 $('#btnSeed').onclick = seed;
-load().catch(e => toast(e.message));
+start('semana', load);
 </script>
 </body></html>
